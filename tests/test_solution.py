@@ -8,6 +8,10 @@ Students can run these tests locally to check basic correctness of their impleme
 The hidden test suite used for grading contains additional edge cases and will not be
 available to students.
 """
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
 import pytest
 from solution import suggest_slots
 
@@ -63,4 +67,108 @@ def test_lunch_break_blocks_all_slots_during_lunch():
     assert "12:30" not in slots
     assert "12:45" not in slots
 
-"""TODO: Add at least 5 additional test cases to test your implementation."""
+def test_no_available_slots_returns_empty_list():
+    """
+    Edge case:
+    When the entire day is blocked by events, function should return empty list.
+    """
+    events = [
+        {"start": "09:00", "end": "12:00"},
+        {"start": "13:00", "end": "17:00"},
+    ]
+    slots = suggest_slots(events, meeting_duration=60, day="2026-02-01")
+    
+    assert slots == []
+
+def test_event_partially_overlapping_working_hours():
+    """
+    Constraint:
+    Events that partially overlap working hours should block only the overlapping portion.
+    """
+    events = [
+        {"start": "08:00", "end": "10:00"},  # Starts before work, ends during work
+        {"start": "16:00", "end": "18:00"},  # Starts during work, ends after work
+    ]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+    
+    # 10:00 should not be available (event ends exactly at 10:00)
+    assert "10:00" not in slots
+    assert "10:15" in slots
+    # 16:00 should not be available (event starts at 16:00)
+    assert "16:00" not in slots
+    assert "15:30" in slots  # Should be available before 16:00
+
+def test_multiple_overlapping_events():
+    """
+    Functional requirement:
+    Multiple overlapping events should be handled correctly.
+    """
+    events = [
+        {"start": "10:00", "end": "11:00"},
+        {"start": "10:30", "end": "11:30"},  # Overlaps with first event
+        {"start": "11:15", "end": "12:00"},  # Overlaps with second event
+    ]
+    slots = suggest_slots(events, meeting_duration=30, day="2026-02-01")
+    
+    # No slots should be available between 10:00 and 12:00
+    assert "10:00" not in slots
+    assert "10:15" not in slots
+    assert "10:30" not in slots
+    assert "11:00" not in slots
+    assert "11:15" not in slots
+    assert "11:30" not in slots
+    # But 12:15 should be available (after lunch)
+    assert "12:15" not in slots  # Still in lunch break
+    assert "13:15" in slots  # After lunch and after events
+
+def test_long_meeting_duration():
+    """
+    Edge case:
+    Very long meetings should only show slots where they fit entirely within working hours.
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=480, day="2026-02-01")  # 8 hours
+    
+    # An 8-hour meeting starting at 9:00 would end at 17:00, which is exactly at end of work
+    # This should be valid (meetings can end exactly at work end time)
+    assert len(slots) == 1
+    assert "09:00" in slots
+    
+    # A meeting longer than 8 hours should have no slots
+    slots_longer = suggest_slots(events, meeting_duration=481, day="2026-02-01")  # 8 hours 1 minute
+    assert len(slots_longer) == 0
+
+def test_meeting_ending_at_lunch_boundary():
+    """
+    Edge case:
+    Meetings that would end exactly at lunch start should be valid.
+    Meetings that would start exactly at lunch end should be valid.
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=60, day="2026-02-01")
+    
+    # A 60-minute meeting starting at 11:00 would end at 12:00 (lunch start)
+    # This should be valid
+    assert "11:00" in slots
+    
+    # A 60-minute meeting starting at 13:00 would start exactly when lunch ends
+    # This should be valid
+    assert "13:00" in slots
+
+def test_very_short_meeting_duration():
+    """
+    Edge case:
+    Very short meetings (15 minutes) should have many available slots.
+    """
+    events = [{"start": "10:00", "end": "11:00"}]
+    slots = suggest_slots(events, meeting_duration=15, day="2026-02-01")
+    
+    # Should have slots before 10:00, after 11:00, avoiding lunch
+    assert "09:00" in slots
+    assert "09:45" in slots
+    assert "10:00" not in slots
+    assert "10:45" not in slots
+    assert "11:00" not in slots  # Can't start exactly when event ends
+    assert "11:15" in slots
+    assert "12:00" not in slots  # Lunch break
+    assert "13:00" in slots
