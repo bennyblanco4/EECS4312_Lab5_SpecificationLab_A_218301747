@@ -98,6 +98,13 @@ def suggest_slots(
                 conflicts = True
                 break
         
+        # Check Friday constraint: meetings on Fridays must not start after 15:00
+        # This means meetings must start at or before 15:00, so 15:00 and later are excluded
+        if day == "Fri":
+            friday_cutoff = 15 * 60  # 15:00 in minutes
+            if start_minutes >= friday_cutoff:
+                continue
+        
         if not conflicts:
             valid_slots.append(minutes_to_time(start_minutes))
     

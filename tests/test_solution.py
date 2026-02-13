@@ -172,3 +172,97 @@ def test_very_short_meeting_duration():
     assert "11:15" in slots
     assert "12:00" not in slots  # Lunch break
     assert "13:00" in slots
+
+def test_friday_meetings_must_not_start_after_1500():
+    """
+    New requirement:
+    Meetings scheduled on Fridays must not start after 15:00.
+    Slots starting after 15:00 on Fridays should be excluded.
+    """
+    events = []
+    slots = suggest_slots(events, meeting_duration=30, day="Fri")
+    
+    # Slots before 15:00 should be available
+    assert "09:00" in slots
+    assert "14:00" in slots
+    assert "14:45" in slots
+    
+    # Slots at or after 15:00 should be excluded
+    assert "15:00" not in slots
+    assert "15:15" not in slots
+    assert "15:30" not in slots
+    assert "16:00" not in slots
+    assert "16:45" not in slots
+
+def test_friday_constraint_with_events():
+    """
+    New requirement:
+    Friday constraint should work correctly even when there are existing events.
+    """
+    events = [{"start": "10:00", "end": "11:00"}]
+    slots = suggest_slots(events, meeting_duration=30, day="Fri")
+    
+    # Should have slots before 10:00 and after 11:00, but only up to 15:00
+    assert "09:00" in slots
+    assert "09:30" in slots
+    # 09:45 would end at 10:15, which conflicts with event 10:00-11:00, so it's excluded
+    assert "10:00" not in slots  # Blocked by event
+    assert "11:15" in slots
+    assert "14:30" in slots  # Valid slot before 15:00
+    assert "14:45" in slots  # Last valid slot before 15:00 (ends at 15:15, but start is before 15:00)
+    assert "15:00" not in slots  # Friday constraint
+    assert "15:15" not in slots  # Friday constraint
+
+def test_non_friday_days_unaffected():
+    """
+    New requirement:
+    Non-Friday days should not be affected by the Friday constraint.
+    """
+    events = []
+    
+    # Test Monday - should have all slots including after 15:00
+    slots_mon = suggest_slots(events, meeting_duration=30, day="Mon")
+    assert "15:00" in slots_mon
+    assert "15:15" in slots_mon
+    assert "16:00" in slots_mon
+    # 16:45 would end at 17:15, which is after working hours (17:00), so it's excluded
+    assert "16:30" in slots_mon  # Last valid slot (ends at 17:00)
+    
+    # Test Tuesday - should have all slots including after 15:00
+    slots_tue = suggest_slots(events, meeting_duration=30, day="Tue")
+    assert "15:00" in slots_tue
+    assert "15:15" in slots_tue
+    assert "16:00" in slots_tue
+    
+    # Test Wednesday - should have all slots including after 15:00
+    slots_wed = suggest_slots(events, meeting_duration=30, day="Wed")
+    assert "15:00" in slots_wed
+    assert "15:15" in slots_wed
+    assert "16:00" in slots_wed
+    
+    # Test Thursday - should have all slots including after 15:00
+    slots_thu = suggest_slots(events, meeting_duration=30, day="Thu")
+    assert "15:00" in slots_thu
+    assert "15:15" in slots_thu
+    assert "16:00" in slots_thu
+
+def test_friday_edge_case_exactly_1500():
+    """
+    Edge case:
+    Test that Friday slot at exactly 15:00 is excluded.
+    The requirement "must not start after 15:00" is interpreted as excluding 15:00 and later.
+    Note: The constraint only applies to start time, not end time.
+    """
+    events = []
+    
+    # Test with 60-minute meeting - 14:00 start is valid (ends at 15:00)
+    slots = suggest_slots(events, meeting_duration=60, day="Fri")
+    assert "14:00" in slots
+    
+    # Test with 15-minute meeting - 14:45 start is valid (ends at 15:00)
+    slots_short = suggest_slots(events, meeting_duration=15, day="Fri")
+    assert "14:45" in slots_short
+    
+    # 15:00 start should be excluded regardless of meeting duration
+    assert "15:00" not in slots
+    assert "15:00" not in slots_short
